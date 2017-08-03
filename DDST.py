@@ -39,80 +39,84 @@ def TopSort(G):
 block = {} # which connected component belong to 
 CC = {} # connected component 
 CC_E = {}
-def D2U(G): # directed graph to undirected
-	if G.type==UNDIRECTED: return G
-	UG = Graph()
-	for edge in G.E:
-		UG.addEdge(edge);
-		e = edge 
-		e['from'],e['to'] = edge['to'],e['from']
-		UG.addEdge(e);
-	return UG
+
 
 def dfs(G, u, b):
 	block[u] = b
 	if not b in CC:
 		CC[b] = set()
 	CC[b].add(u)
-	for e in G[u]:
-		v = e['to']
+	for v in G[u]:		
 		if not v in block:
 			dfs(G, v, b)
 
 def get_connected_component(G):
 	block = {}
-	if G.type==DIRECTED:
-		G = D2U(G)
+	if G.is_directed():
+		G = G.to_undirected()
 	b = 1
-	for u in G.V:
+	for u in G:
 		if not u in block:
 			dfs(G, u, b)
-	for e in G.E:
-		u = e['from']
+	for e in G.edges():
+		u = e[0]
 		b = block[u]
 		if not b in CC_E:
 			CC_E[b] = set()
-		CC_E[b].add(e['ID'])
-	return CC
+		CC_E[b].add(e)
+#	return CC
 
 def In(edge, CC):
-	return edge['from'] in CC and edge['to'] in CC
+	return edge[0] in CC and edge[1] in CC
 
-def edges(G, v):
-	S = {e['ID'] for e in G.V[v]};
 
-def DDST(G, Q, w): # 𝒢: graph stream,\
+def E2G(E): # Construct Graph from set of edges(pair) 
+	G = {}
+	for e in E:
+		u , v = e[0], e[1]
+		if not u in G:
+			G[u] = set()
+		G[u].append(v)
+	return G
+
+def DDST(G, timing_order, Q): # 𝒢: graph stream,\
 # 𝒬: query graph, 𝑤: window size
-	Sv, sim = DualSim(Q,G)
-	simE, SE, match_graph, SV = V2EMatch(Q,G,sim)
-	top_order = TopSort(Q.timing_order)
+	sim = DualSim(Q, G)
+	simE, match_graph = V2EMatch(Q,G,sim)
+	top_order = TopSort(timing_order)
 	ts = {}
-	for x in range(Q.NE()): ts[x] = -1e7
+	for x in Q.edges(): ts[x] = -INF
 	rsimE = reverseG(simE)
 	get_connected_component(match_graph)
+	timing_graph = E2G(timing_order)
+	for v in Q.edges() : 
+		if not v in timing_graph: timing_graph[v]=set()
+	rev_timing_graph = reverseG(timing_graph)
+	for v in Q.edges() : 
+		if not v in rev_timing_graph: rev_timing_graph[v]=set()
 	while True:
 		change = False
 		for cc in CC : # for every component
 			for eQ in top_order:
 				lim = -1e7 #lower bound
-				for preEQ in Q.V2[eQ]:
+				for preEQ in rev_timing_graph[eQ]:
 					lim = max(lim, ts[preEQ])
 				Min = 1e9
-				for eGid in simE[eQ] & CC_E[cc]:
-					eG = G.E['eGid']
+				for eG in simE[eQ] & CC_E[cc]:
+				#	eG = G.E['eGid']
 					if not In(eG, CC[cc]): continue
-					if eG['time'] > lim:
+					if G[eG[0]][eG[1]]['time'] > lim:
 						Min = min(Min, eG['time'])
 					else:
-						simE[eQ].remove(eGid)
-						rsimE[eGid].remove(eQ)
+						simE[eQ].remove(eG)
+						rsimE[eG].remove(eQ)
 						if len(rsimE[eGid])==0:
 							SE.remove(eGid)
 						change = True 
 				ts[eQ] = Min
 			for eQ in top_order[::-1]:
 				lim = INF
-				for postEQ in Q.V[eQ]:
+				for postEQ in timing_graph[eQ]:
 					lim = min(lim, ts[postEQ])
 				Max = -INF
 				for eGid in simE[eQ] & CC_E[cc]:
@@ -158,7 +162,5 @@ def DDST(G, Q, w): # 𝒢: graph stream,\
 		if not change: break
 			
 	return 	sim, simE, SV, SE, match_graph
-
-
 
 
